@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from lib.catalog import PUBLIC_URL
+from lib.check import check
+from lib.error import SeedbankError
+from lib.fetch import fetch
+from lib.publish import publish
+from lib.search import search
+from lib.share import share
+from lib.steps import steps
+
+USAGE = (
+    "seedbank check [folder] | publish [folder] [--catalog <git url>] | "
+    "share <user>... | search <words> | fetch <seed> [folder] | "
+    "steps <seed> --env <environment>"
+)
+
+
+def _take_flag(rest, flag):
+    value = None
+    kept = []
+    index = 0
+    while index < len(rest):
+        if rest[index] == flag:
+            if index + 1 >= len(rest):
+                raise SeedbankError(f"{flag} needs a value")
+            value = rest[index + 1]
+            index += 2
+            continue
+        kept.append(rest[index])
+        index += 1
+    return value, kept
+
+
+def main(argv):
+    if not argv:
+        raise SeedbankError(USAGE)
+    command, rest = argv[0], argv[1:]
+    if command == "check":
+        if len(rest) > 1:
+            raise SeedbankError(USAGE)
+        seed, problems, license_name = check(rest[0] if rest else None)
+        if problems:
+            for problem in problems:
+                print(f"  {problem}")
+            raise SeedbankError(f"{len(problems)} problem(s).")
+        print(f"ok {seed.kind} {seed.name}")
+        if license_name:
+            print(f"license {license_name}")
+        return
+    if command == "publish":
+        catalog, rest = _take_flag(rest, "--catalog")
+        if len(rest) > 1:
+            raise SeedbankError(USAGE)
+        publish(rest[0] if rest else None, catalog or PUBLIC_URL)
+        return
+    if command == "share":
+        if not rest:
+            raise SeedbankError("name the people to share with")
+        share(rest)
+        return
+    if command == "search":
+        if not rest:
+            raise SeedbankError("give words to search for")
+        search(rest)
+        return
+    if command == "fetch":
+        if not rest or len(rest) > 2:
+            raise SeedbankError("give a link or a short name")
+        fetch(rest[0], rest[1] if len(rest) == 2 else None)
+        return
+    if command == "steps":
+        env, rest = _take_flag(rest, "--env")
+        if len(rest) != 1 or not env:
+            raise SeedbankError("seedbank steps <seed> --env <environment>")
+        steps(rest[0], env)
+        return
+    raise SeedbankError(USAGE)
+
+
+if __name__ == "__main__":
+    try:
+        main(sys.argv[1:])
+    except SeedbankError as exc:
+        print(f"seedbank: {exc}", file=sys.stderr)
+        sys.exit(1)

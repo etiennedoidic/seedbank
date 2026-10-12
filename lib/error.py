@@ -1,0 +1,2 @@
+class SeedbankError(Exception):
+    pass
