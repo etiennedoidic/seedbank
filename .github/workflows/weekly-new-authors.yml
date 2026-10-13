@@ -1,0 +1,51 @@
+name: weekly-new-authors
+
+on:
+  schedule:
+    - cron: "0 15 * * MON"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: catalog
+          fetch-depth: 0
+
+      - name: Build the digest
+        id: digest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          SINCE="$(date -u -d '7 days ago' +%Y-%m-%d)"
+          # New owners added to rows/ in the last 7 days.
+          OWNERS="$(git log --since "$SINCE" --name-only --pretty=format: -- rows/ \
+            | grep -E '^rows/[^/]+/[^/]+\.json$' | awk -F/ '{print $2}' \
+            | sort -u || true)"
+          if [ -z "$OWNERS" ]; then
+            echo "No new authors this week." > body.md
+          else
+            {
+              echo "New seedbank authors in the last 7 days:"
+              echo
+              for owner in $OWNERS; do echo "- $owner"; done
+            } > body.md
+          fi
+          echo "body_path=body.md" >> "$GITHUB_OUTPUT"
+
+      - name: Open the digest issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          TITLE="New seedbank authors — week of $(date -u +%Y-%m-%d)"
+          gh issue create --repo "$REPO" --title "$TITLE" --body-file body.md --label "digest"

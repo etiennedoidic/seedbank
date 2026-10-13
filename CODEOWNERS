@@ -1,0 +1,8 @@
+# Catalog branch code owners. Row PRs do NOT list a code owner, so they only
+# need the seedbank-review check. Everything else needs etienne.
+
+/.github/            @etiennedoidic
+/CODEOWNERS          @etiennedoidic
+/trusted.txt         @etiennedoidic
+/blocked.txt         @etiennedoidic
+/README.md           @etiennedoidic

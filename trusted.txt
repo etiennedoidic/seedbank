@@ -1,0 +1,2 @@
+# Trusted authors (one GitHub login per line). Their lane C *updates* can
+# auto-merge later; new seeds still wait for etienne.

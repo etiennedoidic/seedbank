@@ -1,0 +1,214 @@
+name: seedbank-review
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+  statuses: write
+  issues: write
+
+concurrency:
+  group: review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: seedbank-review
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the catalog branch (not the PR head)
+        uses: actions/checkout@v4
+        with:
+          ref: catalog
+          fetch-depth: 0
+
+      - name: Install the seedbank CLI (pinned to main)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Pin CLI to a commit on main.
+          CLI_COMMIT="${SEEDBANK_CLI_COMMIT:-main}"
+          git clone --depth 1 --branch "$CLI_COMMIT" \
+            https://github.com/${{ github.repository }} \
+            "$RUNNER_TEMP/seedbank-cli" || \
+            git clone https://github.com/${{ github.repository }} "$RUNNER_TEMP/seedbank-cli"
+          echo "$RUNNER_TEMP/seedbank-cli" >> "$GITHUB_PATH"
+          chmod +x "$RUNNER_TEMP/seedbank-cli/seedbank"
+          echo "SEEDBANK=$RUNNER_TEMP/seedbank-cli/seedbank" >> "$GITHUB_ENV"
+
+      - name: Install scanners
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y clamav
+          sudo systemctl stop clamav-freshclam || true
+          sudo freshclam || true
+          # gitleaks via GitHub releases.
+          GITLEAKS_VER="8.19.2"
+          curl -sSfL \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VER}/gitleaks_${GITLEAKS_VER}_linux_x64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin gitleaks
+
+      - name: Read PR files and author
+        id: files
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          CHANGED="$(gh pr view "$PR_NUMBER" --repo "$PR_REPO" --json files --jq '.files[].path')"
+          AUTHOR="$(gh pr view "$PR_NUMBER" --repo "$PR_REPO" --json author --jq '.author.login')"
+          HEAD_SHA="$(gh pr view "$PR_NUMBER" --repo "$PR_REPO" --json headRefOid --jq '.headRefOid')"
+          COUNT="$(echo "$CHANGED" | sed '/^$/d' | wc -l | tr -d ' ')"
+          echo "author=$AUTHOR" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          # Must change exactly one rows/<owner>/<name>.json
+          if [ "$COUNT" != "1" ]; then
+            echo "fail=multi-file" >> "$GITHUB_OUTPUT"
+            echo "::error::PR must change exactly one rows/<owner>/<name>.json; this one changes $COUNT file(s)."
+            exit 1
+          fi
+          PATH_IN_PR="$(echo "$CHANGED" | head -n1)"
+          echo "row_path=$PATH_IN_PR" >> "$GITHUB_OUTPUT"
+          case "$PATH_IN_PR" in
+            rows/*/*.json) : ;;
+            *)
+              echo "fail=not-a-row" >> "$GITHUB_OUTPUT"
+              echo "::error::PR must change a rows/<owner>/<name>.json; got $PATH_IN_PR"
+              exit 1
+              ;;
+          esac
+          # Fetch the row at the PR head (as data, never checked out)
+          mkdir -p "$RUNNER_TEMP/pr-row/$(dirname "$PATH_IN_PR")"
+          gh api --header "Accept: application/vnd.github.raw" \
+            "repos/$PR_REPO/contents/$PATH_IN_PR?ref=$HEAD_SHA" \
+            > "$RUNNER_TEMP/pr-row/$PATH_IN_PR"
+
+      - name: Blocklist and rate limit
+        env:
+          AUTHOR: ${{ steps.files.outputs.author }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ -f blocked.txt ] && grep -qE "^[[:space:]]*$AUTHOR[[:space:]]*(#.*)?$" blocked.txt; then
+            echo "::error::$AUTHOR is in blocked.txt"
+            exit 1
+          fi
+          OPEN="$(gh pr list --repo "$PR_REPO" --author "$AUTHOR" --state open --json number --jq '. | length')"
+          if [ "$OPEN" -gt 3 ]; then
+            echo "::error::$AUTHOR has $OPEN open PRs; limit is 3"
+            exit 1
+          fi
+
+      - name: Install the PR's row into the catalog clone and run the review
+        id: review
+        env:
+          SEEDBANK_PR_AUTHOR: ${{ steps.files.outputs.author }}
+          ROW_PATH: ${{ steps.files.outputs.row_path }}
+        run: |
+          set -euo pipefail
+          # Copy the PR row over the catalog row so classify sees the new one.
+          mkdir -p "$(dirname "$ROW_PATH")"
+          # If the base already has a row, pass it as previous for diff.
+          if [ -f "$ROW_PATH" ]; then
+            cp "$ROW_PATH" "$RUNNER_TEMP/prev-row.json"
+            echo "SEEDBANK_PREV_ROW=$(cat $RUNNER_TEMP/prev-row.json | tr -d '\n')" >> "$GITHUB_ENV"
+          fi
+          cp "$RUNNER_TEMP/pr-row/$ROW_PATH" "$ROW_PATH"
+          # Fetch the pinned commit's archive, scan with clamav + gitleaks (never run).
+          python3 - "$ROW_PATH" <<'PY'
+          import json, sys, subprocess, tempfile, os
+          sys.path.insert(0, os.environ["RUNNER_TEMP"] + "/seedbank-cli")
+          from lib.link import parse_link
+          from lib.fetch import _bare, _archive_bytes
+          row = json.loads(open(sys.argv[1]).read())
+          link = parse_link(row["link"])
+          _bare(link)
+          data = _archive_bytes(link, row["commit"], link.folder)
+          out = tempfile.mkdtemp(prefix="seed-archive-")
+          import tarfile, io
+          with tarfile.open(fileobj=io.BytesIO(data)) as tar:
+              tar.extractall(out, filter="data")
+          print(out)
+          with open(os.environ["GITHUB_ENV"], "a") as f:
+              f.write(f"SEED_EXTRACT={out}\n")
+          PY
+          clamscan -r --no-summary --infected "$SEED_EXTRACT" || {
+            echo "::error::clamscan found malware"
+            exit 1
+          }
+          gitleaks detect --source "$SEED_EXTRACT" --no-git --redact || {
+            echo "::error::gitleaks found a secret"
+            exit 1
+          }
+          # Run the classifier and capture lane + body.
+          set +e
+          "$SEEDBANK" review --ci "$ROW_PATH" > "$RUNNER_TEMP/body.md" 2> "$RUNNER_TEMP/meta.json"
+          REVIEW_EXIT=$?
+          set -e
+          echo "review_exit=$REVIEW_EXIT" >> "$GITHUB_OUTPUT"
+          LANE="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["lane"])' "$RUNNER_TEMP/meta.json")"
+          AUTO="$(python3 -c 'import json,sys; print(str(json.load(open(sys.argv[1]))["auto_merge"]).lower())' "$RUNNER_TEMP/meta.json")"
+          echo "lane=$LANE" >> "$GITHUB_OUTPUT"
+          echo "auto_merge=$AUTO" >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/body.md"
+          echo "---"
+          cat "$RUNNER_TEMP/meta.json"
+
+      - name: Post or edit the one review comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          MARKER="<!-- seedbank-review -->"
+          EXISTING="$(gh api repos/$PR_REPO/issues/$PR_NUMBER/comments --paginate \
+            --jq ".[] | select(.body | startswith(\"$MARKER\")) | .id" | head -n1)"
+          BODY="$(cat "$RUNNER_TEMP/body.md")"
+          if [ -n "$EXISTING" ]; then
+            gh api -X PATCH repos/$PR_REPO/issues/comments/$EXISTING -f "body=$BODY" > /dev/null
+          else
+            gh api -X POST repos/$PR_REPO/issues/$PR_NUMBER/comments -f "body=$BODY" > /dev/null
+          fi
+
+      - name: Label the lane
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_REPO: ${{ github.repository }}
+          LANE: ${{ steps.review.outputs.lane }}
+        run: |
+          set -euo pipefail
+          # Create label if missing.
+          gh label create "lane:$LANE" --repo "$PR_REPO" --color ededed --description "seedbank review lane" >/dev/null 2>&1 || true
+          # Remove any other lane labels.
+          for L in A B C D; do
+            if [ "$L" != "$LANE" ]; then
+              gh pr edit "$PR_NUMBER" --repo "$PR_REPO" --remove-label "lane:$L" >/dev/null 2>&1 || true
+            fi
+          done
+          gh pr edit "$PR_NUMBER" --repo "$PR_REPO" --add-label "lane:$LANE"
+
+      - name: Auto-merge lanes A and B
+        if: steps.review.outputs.auto_merge == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh pr merge "$PR_NUMBER" --repo "$PR_REPO" --squash --delete-branch
+
+      - name: Fail the status if the review did
+        if: steps.review.outputs.review_exit != '0'
+        run: |
+          echo "::error::seedbank review failed (exit ${{ steps.review.outputs.review_exit }})"
+          exit 1

@@ -1,0 +1,1 @@
+# Blocked owners (one GitHub login per line). CI closes their PRs.
