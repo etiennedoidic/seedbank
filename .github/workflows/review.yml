@@ -197,7 +197,7 @@ jobs:
           done
           gh pr edit "$PR_NUMBER" --repo "$PR_REPO" --add-label "lane:$LANE"
 
-      - name: Auto-merge lanes A and B
+      - name: Enable auto-merge for lanes A and B
         if: steps.review.outputs.auto_merge == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -205,7 +205,10 @@ jobs:
           PR_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          gh pr merge "$PR_NUMBER" --repo "$PR_REPO" --squash --delete-branch
+          # --auto asks GitHub to squash-merge as soon as all required
+          # checks pass. This step itself is one of those checks, so we
+          # can't merge inline.
+          gh pr merge "$PR_NUMBER" --repo "$PR_REPO" --squash --auto --delete-branch
 
       - name: Fail the status if the review did
         if: steps.review.outputs.review_exit != '0'
