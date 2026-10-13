@@ -1,0 +1,28 @@
+{
+  "name": "etiennedoidic/add-music",
+  "link": "github.com/etiennedoidic/wizardos-spells//add-music",
+  "commit": "353ac49bb69c009773086527f96a911f135a1183",
+  "tree": "02152921fb02b724132298403c9f1ff1d168d3f8",
+  "kind": "tool",
+  "description": "Download audio from a URL into a Navidrome-layout music library as tagged FLAC, splitting chapters and playlists.",
+  "tags": [
+    "wizardos",
+    "wand",
+    "spell"
+  ],
+  "requires": [
+    "wizardos",
+    "yt-dlp",
+    "ffmpeg",
+    "mutagen"
+  ],
+  "permissions": [
+    "net",
+    "exec",
+    "fs.write"
+  ],
+  "dependencies": [
+    "github.com/etiennedoidic/wizard-apps//apps/wand@v0.1.0"
+  ],
+  "lane": "D"
+}
