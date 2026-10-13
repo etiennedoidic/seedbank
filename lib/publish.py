@@ -29,8 +29,17 @@ def build_link(folder, pinned):
     return link
 
 
+def _lane_hint(lane):
+    return {
+        "A": "will be listed automatically",
+        "B": "will be listed automatically, runs with no network",
+        "C": "waits for a short review",
+        "D": "waits for a full review",
+    }.get(lane, "no lane")
+
+
 def publish(folder=None, catalog_url=PUBLIC_URL):
-    seed, problems, _license = check(folder)
+    seed, problems, _license, report = check(folder)
     if problems:
         for problem in problems:
             print(f"  {problem}")
@@ -47,7 +56,8 @@ def publish(folder=None, catalog_url=PUBLIC_URL):
     commit = head_commit(seed.folder)
     tree = tree_of(link, commit)
     short_name = f"{repo.owner}/{seed.name}"
-    row = build_row(short_name, link, commit, tree, seed, lane="")
+    lane = report.lane if report else ""
+    row = build_row(short_name, link, commit, tree, seed, lane=lane)
 
     branch = PUBLIC_BRANCH if catalog_url == PUBLIC_URL else "main"
     if catalog_url != PUBLIC_URL:
@@ -56,6 +66,8 @@ def publish(folder=None, catalog_url=PUBLIC_URL):
         branch = default_branch_name(catalog_url)
     result = submit(row, catalog_url, branch)
     print(f"  {'submitted':<10} {link_text(link)} @ {commit[:7]}")
+    if lane:
+        print(f"  {'lane':<10} {lane} ({_lane_hint(lane)})")
     status = result.get("status") or ("same" if result["accepted"] else "")
     if result["accepted"]:
         tag = {"same": "already up to date", "new": "accepted", "updated": "accepted"}

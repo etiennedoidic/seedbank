@@ -5,6 +5,7 @@ from lib.error import SeedbankError
 from lib.git import committed_file, dirty
 from lib.link import parse_link
 from lib.read_seed import KINDS, read_seed
+from lib.review import WorkingTree, classify
 
 _LICENSE_NAMES = (
     "LICENSE",
@@ -55,7 +56,7 @@ def check(folder=None):
 
     if seed.kind not in KINDS:
         problems.append(
-            "set kind to tool, app, game, component, prompt, skill or bundle"
+            "set kind to tool, app, game, component, prompt, skill, bundle or standard"
         )
     if not seed.description or len(seed.description) > 160:
         problems.append("make description one sentence, at most 160 characters")
@@ -82,6 +83,12 @@ def check(folder=None):
         if not front.get("name") or not front.get("description"):
             problems.append("start SKILL.md with name and description")
 
+    if seed.kind == "standard":
+        if not (folder / "STANDARD.md").is_file():
+            problems.append("add STANDARD.md with the rules in plain words")
+        if not (folder / "checks.json").is_file():
+            problems.append("add checks.json listing the automated checks")
+
     if seed.kind == "bundle":
         if not seed.members:
             problems.append("set members to a list of seed links")
@@ -102,4 +109,21 @@ def check(folder=None):
     if dirty(folder):
         problems.append("commit this folder; the seed is what git has committed")
 
-    return seed, problems, _license_name(folder)
+    license_name = _license_name(folder)
+    if license_name is None:
+        problems.append("add a LICENSE file (MIT, Apache-2.0, GPL-3.0 or BSD)")
+
+    report = None
+    if not problems:
+        try:
+            report = classify(WorkingTree(folder=folder), vetted=set(), seed=seed)
+        except SeedbankError as exc:
+            problems.append(str(exc))
+        else:
+            for item in report.problems:
+                if item.level == "fail":
+                    where = item.file or "seed"
+                    line = f":{item.line}" if item.line else ""
+                    problems.append(f"{where}{line}: {item.message}")
+
+    return seed, problems, license_name, report

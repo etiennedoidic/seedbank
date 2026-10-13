@@ -48,7 +48,7 @@ def main(argv):
     if command == "check":
         if len(rest) > 1:
             raise SeedbankError(USAGE)
-        seed, problems, license_name = check(rest[0] if rest else None)
+        seed, problems, license_name, report = check(rest[0] if rest else None)
         if problems:
             for problem in problems:
                 print(f"  {problem}")
@@ -56,6 +56,20 @@ def main(argv):
         print(f"ok {seed.kind} {seed.name}")
         if license_name:
             print(f"license {license_name}")
+        if report is not None:
+            lane_hint = {
+                "A": "listed automatically (content only)",
+                "B": "listed automatically (locked UI, no network)",
+                "C": "waits for a short review",
+                "D": "waits for a full review",
+            }.get(report.lane, "no lane")
+            if report.lane:
+                print(f"lane {report.lane}: {lane_hint}")
+            for item in report.problems:
+                if item.level == "warn":
+                    where = item.file or "seed"
+                    line = f":{item.line}" if item.line else ""
+                    print(f"  warn {where}{line}: {item.message}")
         return
     if command == "publish":
         catalog, rest = _take_flag(rest, "--catalog")

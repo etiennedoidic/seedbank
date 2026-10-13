@@ -5,7 +5,7 @@ from pathlib import Path
 from lib.error import SeedbankError
 from lib.git import origin_url, parse_remote, toplevel
 
-KINDS = ("tool", "app", "game", "component", "prompt", "skill", "bundle")
+KINDS = ("tool", "app", "game", "component", "prompt", "skill", "bundle", "standard")
 FIELDS = {
     "kind",
     "description",
