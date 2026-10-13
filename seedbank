@@ -141,9 +141,24 @@ def main(argv):
             from lib.ci import main_cli
             main_cli(rest)
             return
+        approve, rest = _take_switch(rest, "--approve")
+        reject, rest = _take_flag(rest, "--reject")
+        changes, rest = _take_flag(rest, "--changes")
         editor, rest = _take_switch(rest, "--editor")
         if rest:
-            raise SeedbankError("review takes [--editor] or --ci <row>")
+            # review <pr> or review <row file>
+            if len(rest) != 1:
+                raise SeedbankError("review takes zero or one argument")
+            target = rest[0]
+            path = Path(target)
+            from lib.review_pr import review_pr, review_row_file
+            if path.is_file() and target.endswith(".json"):
+                review_row_file(target)
+                return
+            review_pr(target, approve=approve, reject_body=reject, changes_body=changes)
+            return
+        if approve or reject is not None or changes is not None:
+            raise SeedbankError("--approve, --reject, --changes need a PR argument")
         review_project(".", editor=editor)
         return
 
