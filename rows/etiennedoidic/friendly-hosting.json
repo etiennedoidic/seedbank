@@ -1,4 +1,20 @@
 {
   "name": "etiennedoidic/friendly-hosting",
-  "link": "github.com/etiennedoidic/friendly-hosting"
+  "link": "github.com/etiennedoidic/friendly-hosting",
+  "commit": "ae0852525788ef5c85d19d1ab7e89984a7d76073",
+  "tree": "f9df6c90ca5cf1acaf9fb207e813fa74b1e130cb",
+  "kind": "tool",
+  "description": "Turn a Mac you own into a host friends can reach over Tailscale.",
+  "tags": [
+    "tailscale",
+    "hosting"
+  ],
+  "requires": [
+    "macos",
+    "tailscale"
+  ],
+  "permissions": [
+    "admin"
+  ],
+  "lane": ""
 }
