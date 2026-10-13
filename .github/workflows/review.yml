@@ -123,8 +123,8 @@ jobs:
           fi
           cp "$RUNNER_TEMP/pr-row/$ROW_PATH" "$ROW_PATH"
           # Fetch the pinned commit's archive, scan with clamav + gitleaks (never run).
-          python3 - "$ROW_PATH" <<'PY'
-          import json, sys, subprocess, tempfile, os
+          SEED_EXTRACT="$(python3 - "$ROW_PATH" <<'PY'
+          import json, sys, tempfile, os
           sys.path.insert(0, os.environ["RUNNER_TEMP"] + "/seedbank-cli")
           from lib.link import parse_link
           from lib.fetch import _bare, _archive_bytes
@@ -137,9 +137,9 @@ jobs:
           with tarfile.open(fileobj=io.BytesIO(data)) as tar:
               tar.extractall(out, filter="data")
           print(out)
-          with open(os.environ["GITHUB_ENV"], "a") as f:
-              f.write(f"SEED_EXTRACT={out}\n")
           PY
+          )"
+          echo "Extracted seed to: $SEED_EXTRACT"
           clamscan -r --no-summary --infected "$SEED_EXTRACT" || {
             echo "::error::clamscan found malware"
             exit 1
