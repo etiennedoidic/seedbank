@@ -4,25 +4,27 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from lib.catalog import PUBLIC_URL
+from lib.catalog import PUBLIC_URL, delist_row
 from lib.check import check
 from lib.error import SeedbankError
 from lib.fetch import fetch
+from lib.guard import guard
+from lib.init import init
+from lib.project_check import project_check, project_root
 from lib.publish import publish
+from lib.review_tui import review as review_project
 from lib.search import search
 from lib.share import share
 from lib.steps import steps
 
 USAGE = (
-    "seedbank check [folder] | publish [folder] [--catalog <git url>] | "
+    "seedbank init [--reviewer] [--standard <link>] | "
+    "check [folder] [--strict] [--brief] [--json] | "
+    "publish [folder] [--catalog <git url>] | "
     "share <user>... | search <words> | fetch <seed> [folder] [--anyway] | "
-    "steps <seed> --env <environment>"
+    "steps <seed> --env <environment> | "
+    "review | guard <path> | delist <owner/name> \"<reason>\""
 )
-
-
-def _take_switch(rest, flag):
-    kept = [item for item in rest if item != flag]
-    return flag in rest, kept
 
 
 def _take_flag(rest, flag):
@@ -41,14 +43,42 @@ def _take_flag(rest, flag):
     return value, kept
 
 
+def _take_switch(rest, flag):
+    kept = [item for item in rest if item != flag]
+    return flag in rest, kept
+
+
 def main(argv):
     if not argv:
         raise SeedbankError(USAGE)
     command, rest = argv[0], argv[1:]
+
+    if command == "init":
+        reviewer, rest = _take_switch(rest, "--reviewer")
+        standard, rest = _take_flag(rest, "--standard")
+        yes, rest = _take_switch(rest, "--baseline")
+        no, rest = _take_switch(rest, "--no-baseline")
+        if rest:
+            raise SeedbankError("init takes [--reviewer] [--standard <link>] [--baseline|--no-baseline]")
+        baseline = True if yes else False if no else None
+        init(".", with_reviewer=reviewer, standards=[standard] if standard else None,
+             baseline_opt=baseline)
+        return
+
     if command == "check":
+        strict, rest = _take_switch(rest, "--strict")
+        brief, rest = _take_switch(rest, "--brief")
+        as_json, rest = _take_switch(rest, "--json")
         if len(rest) > 1:
             raise SeedbankError(USAGE)
-        seed, problems, license_name, report = check(rest[0] if rest else None)
+        folder = rest[0] if rest else "."
+        root = project_root(folder)
+        if root is not None:
+            project_check(folder, strict=strict, brief=brief, as_json=as_json)
+            return
+        if strict or brief or as_json:
+            raise SeedbankError("--strict, --brief and --json need a project (`seedbank init` first)")
+        seed, problems, license_name, report = check(folder)
         if problems:
             for problem in problems:
                 print(f"  {problem}")
@@ -71,34 +101,62 @@ def main(argv):
                     line = f":{item.line}" if item.line else ""
                     print(f"  warn {where}{line}: {item.message}")
         return
+
     if command == "publish":
         catalog, rest = _take_flag(rest, "--catalog")
         if len(rest) > 1:
             raise SeedbankError(USAGE)
         publish(rest[0] if rest else None, catalog or PUBLIC_URL)
         return
+
     if command == "share":
         if not rest:
             raise SeedbankError("name the people to share with")
         share(rest)
         return
+
     if command == "search":
         if not rest:
             raise SeedbankError("give words to search for")
         search(rest)
         return
+
     if command == "fetch":
         anyway, rest = _take_switch(rest, "--anyway")
         if not rest or len(rest) > 2:
             raise SeedbankError("give a link or a short name")
         fetch(rest[0], rest[1] if len(rest) == 2 else None, anyway=anyway)
         return
+
     if command == "steps":
         env, rest = _take_flag(rest, "--env")
         if len(rest) != 1 or not env:
             raise SeedbankError("seedbank steps <seed> --env <environment>")
         steps(rest[0], env)
         return
+
+    if command == "review":
+        editor, rest = _take_switch(rest, "--editor")
+        if rest:
+            raise SeedbankError("review takes [--editor]")
+        review_project(".", editor=editor)
+        return
+
+    if command == "guard":
+        if len(rest) != 1:
+            raise SeedbankError("seedbank guard <path>")
+        sys.exit(guard(rest[0]))
+
+    if command == "delist":
+        if len(rest) != 2:
+            raise SeedbankError("seedbank delist <owner/name> \"<reason>\"")
+        result = delist_row(rest[0], rest[1])
+        if result["accepted"]:
+            print(f"  delisted {rest[0]}")
+        else:
+            print(f"  delist requested, pending at {result['request']}")
+        return
+
     raise SeedbankError(USAGE)
 
 

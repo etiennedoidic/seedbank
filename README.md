@@ -78,12 +78,16 @@ Seeds in the public catalog also get a short name, `owner/name` (for example `sa
 
 | Command | What it does |
 |---|---|
-| `seedbank check` | Says what's missing or wrong in this seed, how to fix it, and *(planned)* which review it will get. |
-| `seedbank publish` | Submits the seed's link to the public catalog. The repo must be publicly readable. |
+| `seedbank init [--reviewer] [--standard <link>] [--baseline]` | Sets up `.seedbank/` in a project. `--reviewer` makes your approval key. `--baseline` marks every file as vetted today. |
+| `seedbank check [folder] [--strict] [--brief] [--json]` | On a seed, says what's missing or wrong and which review it will get. In a project with `.seedbank/`, shows the vetted / changed / new map. |
+| `seedbank review` | Walks the queue of changed and new files, one by one, signs approvals with your password. |
+| `seedbank guard <path>` | Exits 0 if the path is not vetted, 2 if it is. Point an agent hook at this. |
+| `seedbank publish [--catalog <git url>]` | Submits the seed's link and reviewed commit to the catalog. The repo must be publicly readable. |
 | `seedbank share <user>…` | Gives those people read access on your git host, then prints the link to send them. |
-| `seedbank search <words>` | Searches the public catalog. |
-| `seedbank fetch <seed> [folder]` | Downloads a seed, by link or short name. Never installs or runs it. |
+| `seedbank search <words>` | Searches the public catalog (reads the pinned rows; works offline once synced). |
+| `seedbank fetch <seed> [folder] [--anyway]` | Downloads a seed, by link or short name. Pinned to the catalog's reviewed commit. Never installs or runs it. |
 | `seedbank steps <seed> --env <environment>` | Prints the seed's Integrate steps with every helper seed's steps filled in. |
+| `seedbank delist <owner/name> "<reason>"` | Opens a catalog PR that marks a row delisted. |
 
 ## Publish
 
@@ -101,8 +105,8 @@ Once accepted, the seed shows up in `seedbank search` and on [etienne.world/seed
 A group of friends can also run their own catalog in any git repo: `seedbank publish --catalog <git url>`.
 
 The catalog lists the exact commit it reviewed, not whatever your repo holds later. To update, push and run
-`seedbank publish` again. *(Planned.)* Each request gets one of four reviews, picked by automatic checks that read
-your files and never run them:
+`seedbank publish` again. Each request gets one of four reviews, picked by automatic checks that read your files and
+never run them:
 
 | Your seed | Review |
 |---|---|
@@ -113,6 +117,25 @@ your files and never run them:
 
 Seeds built from already-listed seeds, as `dependencies` pinned with `@`, or as an unchanged copy of a listed seed's
 folder, only have their new code reviewed. Their permissions still count.
+
+## Project ledger
+
+In a project you're working on (your own code or a seed under construction), `seedbank init` writes a `.seedbank/`
+folder with a signed ledger. `check` then tells you what's vetted, what you changed, and what's new; `review` walks
+the queue one file at a time and asks for your approval password once at the end. Agents can't approve their own
+work, because approvals are signed by a key only you have the password to.
+
+Point an AI coding assistant at `seedbank guard` so it checks before editing anything you've approved. In Claude
+Code's `settings.json`, under `hooks.PreToolUse`, add:
+
+```json
+{
+  "match": { "tool_name": "Edit" },
+  "command": ["seedbank", "guard", "{{file_path}}"]
+}
+```
+
+`guard` exits 2 on a vetted file, which Claude Code uses to block the edit until you remove it from the ledger.
 
 ## Share privately
 
