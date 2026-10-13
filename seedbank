@@ -136,9 +136,14 @@ def main(argv):
         return
 
     if command == "review":
+        ci, rest = _take_switch(rest, "--ci")
+        if ci:
+            from lib.ci import main_cli
+            main_cli(rest)
+            return
         editor, rest = _take_switch(rest, "--editor")
         if rest:
-            raise SeedbankError("review takes [--editor]")
+            raise SeedbankError("review takes [--editor] or --ci <row>")
         review_project(".", editor=editor)
         return
 
