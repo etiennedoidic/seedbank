@@ -1,0 +1,21 @@
+{
+  "name": "etiennedoidic/yt-transcribe",
+  "link": "github.com/etiennedoidic/wizardos-spells//yt-transcribe",
+  "commit": "12d4f1d87baf262a2a35f4dfe5f8aac2df406a07",
+  "tree": "4c07c0b2ac08c41cd760fb9d349071b1515a1c5f",
+  "kind": "tool",
+  "description": "A YouTube video's transcript as timestamped JSON, from its captions or whisper as a fallback.",
+  "tags": [
+    "youtube",
+    "transcript"
+  ],
+  "requires": [
+    "yt-dlp",
+    "whisper-cli"
+  ],
+  "permissions": [
+    "net",
+    "exec"
+  ],
+  "lane": "D"
+}
