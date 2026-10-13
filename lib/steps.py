@@ -79,7 +79,7 @@ def materialize(seed_arg):
         cached = remembered_name(parsed.owner, parsed.name)
         if cached:
             seed_arg = cached["link"]
-    files, _seed, _link, _commit = get(seed_arg)
+    files, _seed, _link, _commit, _row = get(seed_arg)
     return files
 
 

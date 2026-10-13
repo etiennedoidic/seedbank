@@ -15,9 +15,14 @@ from lib.steps import steps
 
 USAGE = (
     "seedbank check [folder] | publish [folder] [--catalog <git url>] | "
-    "share <user>... | search <words> | fetch <seed> [folder] | "
+    "share <user>... | search <words> | fetch <seed> [folder] [--anyway] | "
     "steps <seed> --env <environment>"
 )
+
+
+def _take_switch(rest, flag):
+    kept = [item for item in rest if item != flag]
+    return flag in rest, kept
 
 
 def _take_flag(rest, flag):
@@ -69,9 +74,10 @@ def main(argv):
         search(rest)
         return
     if command == "fetch":
+        anyway, rest = _take_switch(rest, "--anyway")
         if not rest or len(rest) > 2:
             raise SeedbankError("give a link or a short name")
-        fetch(rest[0], rest[1] if len(rest) == 2 else None)
+        fetch(rest[0], rest[1] if len(rest) == 2 else None, anyway=anyway)
         return
     if command == "steps":
         env, rest = _take_flag(rest, "--env")

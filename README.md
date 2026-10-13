@@ -53,6 +53,15 @@ Everything else comes from git, so don't repeat it in seed.json:
 To help people and AI agents set it up, end `SKILL.md` or `README.md` with an `## Integrate` section, one
 `### <environment>` per place it runs. A step can point at another seed that does a setup chore, by its link.
 
+**No network, faster listing** *(planned)*. An app or component that never needs the network can say so by making
+this the first line inside `<head>` of every HTML page, and loading its scripts only from its own folder:
+
+```html
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'none'; img-src 'self' data:; form-action 'none'; base-uri 'none'">
+```
+
+The browser then blocks every network call, so the catalog can list it without a manual review.
+
 ## Links
 
 A seed's link is its git URL, plus the folder after `//` and a tag or commit after `@` when needed:
@@ -69,7 +78,7 @@ Seeds in the public catalog also get a short name, `owner/name` (for example `sa
 
 | Command | What it does |
 |---|---|
-| `seedbank check` | Says what's missing or wrong in this seed, and how to fix it. |
+| `seedbank check` | Says what's missing or wrong in this seed, how to fix it, and *(planned)* which review it will get. |
 | `seedbank publish` | Submits the seed's link to the public catalog. The repo must be publicly readable. |
 | `seedbank share <user>…` | Gives those people read access on your git host, then prints the link to send them. |
 | `seedbank search <words>` | Searches the public catalog. |
@@ -89,8 +98,21 @@ $ seedbank publish
 
 The public catalog is itself a git repo; `publish` sends it your link, as a pull request where the catalog is hosted.
 Once accepted, the seed shows up in `seedbank search` and on [etienne.world/seedbank](https://etienne.world/seedbank/).
-It follows your repo, so to update it you just push a new commit or tag. A group of friends can also run their own
-catalog in any git repo: `seedbank publish --catalog <git url>`.
+A group of friends can also run their own catalog in any git repo: `seedbank publish --catalog <git url>`.
+
+The catalog lists the exact commit it reviewed, not whatever your repo holds later. To update, push and run
+`seedbank publish` again. *(Planned.)* Each request gets one of four reviews, picked by automatic checks that read
+your files and never run them:
+
+| Your seed | Review |
+|---|---|
+| Only text and images (prompts, skills, docs) | Listed automatically |
+| HTML/CSS, or a web app with the no-network line above | Listed automatically |
+| A small script | A short human review |
+| Uses `admin` or `net`, ships programs, or is a lot of new code | A full human review |
+
+Seeds built from already-listed seeds, as `dependencies` pinned with `@`, or as an unchanged copy of a listed seed's
+folder, only have their new code reviewed. Their permissions still count.
 
 ## Share privately
 

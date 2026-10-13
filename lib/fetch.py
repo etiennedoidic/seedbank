@@ -148,17 +148,34 @@ def tag_of(link, commit):
     return tags[0] if tags else None
 
 
-def get(seed_arg):
+def tree_of(link, commit):
+    """git rev-parse <commit>:<folder>, from the bare cache (fetched if missing)."""
+    try:
+        bare = _bare(link)
+    except SeedbankError:
+        bare = bare_dir(link)
+        if not bare.exists():
+            raise
+    folder = link.folder or ""
+    return git_out(bare, "rev-parse", f"{commit}:{folder}").strip()
+
+
+def get(seed_arg, anyway=False):
+    """Resolve, fetch and checkout one seed.
+
+    Returns (files, seed, link, commit, row). `row` is the catalog row the
+    name resolved to, or None if the seed was asked for by a hand-typed link.
+    """
     from lib.catalog import resolve
 
-    link = resolve(seed_arg)
+    link, row = resolve(seed_arg, anyway=anyway)
     commit = pin(link)
     files = checkout(link, commit, link.folder)
     hint = Path(link.folder).name if link.folder else link.repo
     seed = read_seed(files, name_hint=hint)
     followed = Link(link.host, link.owner, link.repo, link.folder, None)
     remember(seed.name, followed, commit)
-    return files, seed, link, commit
+    return files, seed, link, commit, row
 
 
 def plain_permission(permission):
@@ -178,10 +195,30 @@ def from_line(link, commit):
     return f"{shown} @ {short}"
 
 
-def fetch(seed_arg, dest=None):
-    files, seed, link, commit = get(seed_arg)
+_LANE_LABEL = {
+    "A": "lane A, checked automatically",
+    "B": "lane B, checked automatically, runs with no network",
+    "C": "lane C, short review",
+    "D": "lane D, full review",
+}
+
+
+def review_line(row):
+    """One-line summary of how the catalog approved this row."""
+    if row is None:
+        return "not from the catalog"
+    lane = (row.get("lane") or "").upper()
+    label = _LANE_LABEL.get(lane, "listed")
+    if row.get("delisted"):
+        return f"delisted ({row['delisted']})"
+    return label
+
+
+def fetch(seed_arg, dest=None, anyway=False):
+    files, seed, link, commit, row = get(seed_arg, anyway=anyway)
     print(f"  {seed.kind:<10} {seed.description}")
     print(f"  {'from':<10} {from_line(link, commit)}")
+    print(f"  {'review':<10} {review_line(row)}")
     needs = ", ".join(seed.requires) if seed.requires else "nothing"
     asks = ", ".join(plain_permission(item) for item in seed.permissions) if seed.permissions else "nothing"
     print(f"  {'needs':<10} {needs}")
