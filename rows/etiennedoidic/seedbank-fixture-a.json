@@ -8,5 +8,6 @@
   "tags": [
     "fixture"
   ],
-  "lane": "A"
+  "lane": "A",
+  "delisted": "Fixture used only for CI tests."
 }
