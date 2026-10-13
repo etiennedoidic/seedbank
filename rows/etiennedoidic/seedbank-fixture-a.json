@@ -1,0 +1,12 @@
+{
+  "name": "etiennedoidic/seedbank-fixture-a",
+  "link": "github.com/etiennedoidic/seedbank-fixture-a",
+  "commit": "a10760c1f96828baebc68507f04a84960fc0d84d",
+  "tree": "36dfafabffb9f33a3b5f85c483b65672e0661745",
+  "kind": "prompt",
+  "description": "Lane A fixture: prompt-only seed used to exercise catalog CI.",
+  "tags": [
+    "fixture"
+  ],
+  "lane": "A"
+}
